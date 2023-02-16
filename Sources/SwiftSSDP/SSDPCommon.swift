@@ -7,6 +7,7 @@
 //
 
 import Foundation
+@_exported import os.log
 
 /// Category used for logging SSDP logs
 public let loggerDiscoveryCategory = "SSDP"

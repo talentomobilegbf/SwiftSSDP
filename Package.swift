@@ -1,10 +1,19 @@
+// swift-tools-version: 5.7.1
+
 import PackageDescription
 
 let package = Package(
     name: "SwiftSSDP",
+    platforms: [
+        .macOS(.v10_14), .iOS(.v12), .watchOS(.v5)
+    ],
+    products: [
+        .library(name: "SwiftSSDP", targets: ["SwiftSSDP"])
+    ],
     dependencies: [
-        .Package(url: "https://github.com/pryomoax/SwiftAbstractLogger.git", majorVersion: 0, minor: 3),
-        .Package(url: "https://github.com/robbiehanson/CocoaAsyncSocket.git", majorVersion: 7, minor: 6),
-        .Package(url: "https://github.com/nvzqz/Weak.git", majorVersion: 1)
+        .package(url: "https://github.com/robbiehanson/CocoaAsyncSocket.git", from: "7.6.5")
+    ],
+    targets: [
+        .target(name: "SwiftSSDP", dependencies: ["CocoaAsyncSocket"])
     ]
 )
