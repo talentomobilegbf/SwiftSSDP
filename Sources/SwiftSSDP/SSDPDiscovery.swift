@@ -85,7 +85,7 @@ public class SSDPDiscovery: NSObject {
         try initDiscoverySocket()
         
         assert(self.asyncUdpSocket != nil)
-        assert(!self.asyncUdpSocket!.isClosed())
+        assert(!self.asyncUdpSocket!.isClosed)
         assert(self.ssdpResponseQueue != nil)
         
         return startSession(request: request, timeout: timeout)
@@ -176,21 +176,27 @@ public class SSDPDiscovery: NSObject {
             }
         }
         ssdpQueue = DispatchQueue.main
-        let socket = GCDAsyncUdpSocket(delegate: self, delegateQueue: DispatchQueue.main)
-        try socket.enableBroadcast(true)
-        try socket.beginReceiving()
-        
-        self.asyncUdpSocket = socket
-        self.ssdpResponseQueue = ssdpQueue!
+        do {
+            let socket = try SSDPUDPSocket(completionQueue: .main, readDataHandler: self.receivedUdpPacket(data:packet:), caughtErrorHandler: self.receivedErrorFromSocket(error:))
+            
+            
+            self.asyncUdpSocket = socket
+            self.ssdpResponseQueue = ssdpQueue!
+        }catch {
+            os_log(.error, log: .default, "Unable to create UDP Socket")
+        }
     }
     
     /// Cleans up the discover socket when no more sessions are active
     fileprivate func deinitDiscoverySocket() {
         assert(activeSessions.isEmpty)
-        
-        self.asyncUdpSocket?.close()
-        self.asyncUdpSocket = nil
-        self.ssdpResponseQueue = nil
+        do {
+            try self.asyncUdpSocket?.close()
+            self.asyncUdpSocket = nil
+            self.ssdpResponseQueue = nil
+        }catch {
+            os_log(.error, log: .default, "Unable to close socket %@", error.localizedDescription)
+        }
     }
     
     //
@@ -198,7 +204,8 @@ public class SSDPDiscovery: NSObject {
     //
     
     fileprivate var activeSessions: [Weak<SSDPDiscoverySession>] = []
-    fileprivate var asyncUdpSocket: GCDAsyncUdpSocket?
+//    fileprivate var asyncUdpSocket: GCDAsyncUdpSocket?
+    fileprivate var asyncUdpSocket: SSDPUDPSocket?
     private var ssdpResponseQueue: DispatchQueue?
     private var responseQueue: DispatchQueue?
 }
@@ -231,7 +238,8 @@ extension SSDPDiscovery {
     internal func sendRequestMessage(request: SSDPMSearchRequest) {
         if let socket = self.asyncUdpSocket {
             let messageData = request.message.data(using: .utf8)!
-            socket.send(messageData, toHost: SSDPDiscovery.ssdpHost, port: UInt16(SSDPDiscovery.ssdpPort), withTimeout: -1, tag: 1000)
+            socket.send(messageData: messageData, toHost: SSDPDiscovery.ssdpHost, port: UInt16(SSDPDiscovery.ssdpPort), withTimeout: -1, tag: 1000)
+//            socket.send(messageData, toHost: SSDPDiscovery.ssdpHost, port: UInt16(SSDPDiscovery.ssdpPort), withTimeout: -1, tag: 1000)
         }
     }
     
@@ -246,6 +254,31 @@ extension SSDPDiscovery {
         if activeSessions.isEmpty && count != self.activeSessions.count {
             deinitDiscoverySocket()
         }
+    }
+    
+    internal func receivedUdpPacket(data: Data, packet: SSDPUDPSocket.MessageHandler.InboundIn) {
+        
+        os_log(.debug, log: .default, "M-SEARCH response handled")
+        
+        // Ensure we have parsable data
+        guard let messageString = String(data: data, encoding: .utf8) else {
+            os_log(.error, log: .default, "Unable to parse M-SEARCH response")
+            return
+        }
+        
+        os_log(.debug, log: .default, "%@",messageString)
+        
+        // Construct a real message based on parsing the string message
+        guard let message = SSDPMessageParser.parse(response: messageString) else {
+            os_log(.error, log: .default, "incomplete M-SEARCH response\n%@", messageString)
+            return
+        }
+        
+        self.handleMessage(message)
+    }
+    
+    internal func receivedErrorFromSocket(error: Error) {
+        os_log(.error, "Received error from socket %@", error.localizedDescription)
     }
 }
 
@@ -278,8 +311,8 @@ extension SSDPDiscovery: GCDAsyncUdpSocketDelegate {
     }
     
     public func udpSocket(_ sock: GCDAsyncUdpSocket, didReceive data: Data, fromAddress address: Data, withFilterContext filterContext: Any?) {
-        os_log(.default, log: .default, "M-SEARCH response handled")
-        os_log(.default, log: .default, "%@", String(data: data, encoding: .utf8)!)
+        os_log(.debug, log: .default, "M-SEARCH response handled")
+        os_log(.debug, log: .default, "%@", String(data: data, encoding: .utf8)!)
         
         // Ensure we have parsable data
         guard let messageString = String(data: data, encoding: .utf8) else {
