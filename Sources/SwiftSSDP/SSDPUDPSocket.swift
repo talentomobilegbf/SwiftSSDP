@@ -50,28 +50,17 @@ class SSDPUDPSocket {
             }
         
     
-        // EventLoopFuture completion for creating the channel
-        let channelCompletion = { (result : Result<Channel, Error>) in
-            switch result {
-            case .failure(let error):
-                completionQueue.async {
-                    caughtErrorHandler(error)
-                }
-            case .success(let channel):
-                self.channel = channel
-                print("Socket started and listening on \(channel.localAddress!)")
+        let channel = try { () -> Channel in
+            switch bindTarget {
+            case .ip(let host, let port):
+                return try bootstrap.bind(host: host, port: port).wait()
+            case .unixDomainSocket(let path):
+                return try bootstrap.bind(unixDomainSocketPath: path).wait()
             }
-        }
+            }()
         
-        // Create the channel to bind the socket
-        switch bindTarget {
-        case .ip(let host, let port):
-            _ = bootstrap.bind(host: host, port: port)
-                .always(channelCompletion)
-        case .unixDomainSocket(let path):
-            _ = bootstrap.bind(unixDomainSocketPath: path)
-                .always(channelCompletion)
-        }
+        self.channel = channel
+        print("Socket started and listening on \(channel.localAddress!)")
     }
     
     /// Close the UDP socket
