@@ -7,7 +7,7 @@ import Foundation
 /// This class is a simple UDP socket that can send and receive messages
 class SSDPUDPSocket {
     
-    static let defaultHost = "::1"
+    static let defaultHost = "127.0.0.1"
     static let defaultPort = 9493
     
     enum BindTo {
