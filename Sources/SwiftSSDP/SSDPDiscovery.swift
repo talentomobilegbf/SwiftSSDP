@@ -7,7 +7,6 @@
 //
 
 import Foundation
-import CocoaAsyncSocket
 
 //
 // MARK: - Protocols
@@ -279,53 +278,5 @@ extension SSDPDiscovery {
     
     internal func receivedErrorFromSocket(error: Error) {
         os_log(.error, "Received error from socket %@", error.localizedDescription)
-    }
-}
-
-//
-// MARK: - GCDAsyncUdpSocketDelegate
-//
-
-extension SSDPDiscovery: GCDAsyncUdpSocketDelegate {
-    public func udpSocket(_ sock: GCDAsyncUdpSocket, didConnectToAddress address: Data) {
-    }
-    
-    public func udpSocket(_ sock: GCDAsyncUdpSocket, didNotConnect error: Error?) {
-        if (error != nil) {
-            
-            os_log(.error, log: .default,  "Unable to connect %@", String(describing: error))
-        } else {
-            os_log(.error, log: .default, "Unable to connect")
-        }
-    }
-    
-    public func udpSocket(_ sock: GCDAsyncUdpSocket, didSendDataWithTag tag: Int) {
-    }
-    
-    public func udpSocket(_ sock: GCDAsyncUdpSocket, didNotSendDataWithTag tag: Int, dueToError error: Error?) {
-        if (error != nil) {
-            os_log(.error, log: .default, "Unable to send data %@", String(describing: error))
-        } else {
-            os_log(.error, log: .default, "Unable to send data")
-        }
-    }
-    
-    public func udpSocket(_ sock: GCDAsyncUdpSocket, didReceive data: Data, fromAddress address: Data, withFilterContext filterContext: Any?) {
-        os_log(.debug, log: .default, "M-SEARCH response handled")
-        os_log(.debug, log: .default, "%@", String(data: data, encoding: .utf8)!)
-        
-        // Ensure we have parsable data
-        guard let messageString = String(data: data, encoding: .utf8) else {
-            os_log(.error, log: .default, "Unable to parse M-SEARCH response")
-            return
-        }
-        
-        // Construct a real message based on parsing the string message
-        guard let message = SSDPMessageParser.parse(response: messageString) else {
-            os_log(.error, log: .default, "incomplete M-SEARCH response\n%@", messageString)
-            return
-        }
-        
-        self.handleMessage(message)
     }
 }

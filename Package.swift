@@ -11,12 +11,10 @@ let package = Package(
         .library(name: "SwiftSSDP", targets: ["SwiftSSDP"])
     ],
     dependencies: [
-        .package(url: "https://github.com/robbiehanson/CocoaAsyncSocket.git", from: "7.6.5"),
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.48.0")
     ],
     targets: [
         .target(name: "SwiftSSDP", dependencies: [
-            "CocoaAsyncSocket",
             .product(name: "NIOCore", package: "swift-nio"),
             .product(name: "NIO", package: "swift-nio")
         ])
