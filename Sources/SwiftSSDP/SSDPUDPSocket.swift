@@ -32,8 +32,6 @@ class SSDPUDPSocket {
         self.ip = ip
         self.port = port
         
-        bindTarget = .ip(host: ip, port: port)
-        
         //Initialize the Handler
         // We don't need more than one thread, as we're creating only one datagram channel.
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
