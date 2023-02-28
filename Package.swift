@@ -14,9 +14,9 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.48.0")
     ],
     targets: [
+        .testTarget(name: "SwiftSSDPTests", dependencies: ["SwiftSSDP"]),
         .target(name: "SwiftSSDP", dependencies: [
             .product(name: "NIOCore", package: "swift-nio"),
-            .product(name: "NIO", package: "swift-nio")
-        ])
+            .product(name: "NIO", package: "swift-nio")])
     ]
 )

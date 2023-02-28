@@ -7,8 +7,8 @@ import Foundation
 /// This class is a simple UDP socket that can send and receive messages
 class SSDPUDPSocket {
     
-    static let defaultHost = "127.0.0.1"
-    static let defaultPort = 9493
+    static let defaultHost = "0.0.0.0"
+    static let defaultPort = 64279
     
     enum BindTo {
         case ip(host: String, port: Int)
@@ -20,6 +20,7 @@ class SSDPUDPSocket {
     var channel: Channel?
 //    let bootstrap: DatagramBootstrap?
     let group: MultiThreadedEventLoopGroup?
+    var messageHandler: MessageHandler?
     
     var isClosed: Bool = false
     
@@ -31,33 +32,61 @@ class SSDPUDPSocket {
         self.ip = ip
         self.port = port
         
-        // Define the bind target
-        let bindTarget: BindTo
         bindTarget = .ip(host: ip, port: port)
         
         //Initialize the Handler
         // We don't need more than one thread, as we're creating only one datagram channel.
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
         self.group = group
+        let messageHandler = MessageHandler(completionQueue:completionQueue, readDataHandler: readDataHandler, caughtErrorHandler: caughtErrorHandler)
+        self.messageHandler = messageHandler
+        
+        // Add the multicast group to the channel's membership
+        let ssdpMulticastGroup = try SocketAddress(ipAddress: "239.255.255.250", port: 1900)
+        
+        let networkInterface = try System.enumerateDevices().filter({
+            $0.multicastSupported && $0.broadcastAddress != nil
+        }).sorted(by: {$0.interfaceIndex < $1.interfaceIndex}).first
+       
+        
         let bootstrap = DatagramBootstrap(group: group)
         // Specify backlog and enable SO_REUSEADDR
             .channelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
-        
         // Set the handlers that are applied to the bound channel
             .channelInitializer { channel in
-                // Ensure we don't read faster than we can write by adding the BackPressureHandler into the pipeline.
-                channel.pipeline.addHandler(MessageHandler(completionQueue:completionQueue, readDataHandler: readDataHandler, caughtErrorHandler: caughtErrorHandler))
+
+                // Set up the channel's pipeline to handle outbound messages
+                return channel.pipeline
+                    .addHandler(messageHandler)
             }
         
     
         let channel = try { () -> Channel in
-            switch bindTarget {
-            case .ip(let host, let port):
-                return try bootstrap.bind(host: host, port: port).wait()
-            case .unixDomainSocket(let path):
-                return try bootstrap.bind(unixDomainSocketPath: path).wait()
-            }
-            }()
+            try bootstrap.bind(host: ip, port: port)
+//                .flatMap { channel -> EventLoopFuture<Channel> in
+//                    let channel = channel as! MulticastChannel
+//                    return channel.joinGroup(ssdpMulticastGroup).map { channel }
+//                }
+//                .flatMap { channel -> EventLoopFuture<Channel> in
+//                    guard let interface = networkInterface else {
+//                        return channel.eventLoop.makeSucceededFuture(channel)
+//                    }
+//                    let provider = channel as! SocketOptionProvider
+//                    switch interface.address {
+//                    case .some(.v4(let addr)):
+//                        return provider.setIPMulticastIF(addr.address.sin_addr).map { channel }
+//                    case .some(.v6):
+//                        return provider.setIPv6MulticastIF(CUnsignedInt(interface.interfaceIndex)).map { channel }
+//                    case .some(.unixDomainSocket):
+//                        assertionFailure("Should not be possible to create a multicast socket on a unix domain socket")
+//                        return channel.eventLoop.makeSucceededFuture(channel)
+//                    case .none:
+//                        assertionFailure("Should not be possible to create a multicast socket on an interface without an address")
+//                        return channel.eventLoop.makeSucceededFuture(channel)
+//                    }
+//                }
+                .wait()
+        }()
         
         self.channel = channel
         print("Socket started and listening on \(channel.localAddress!)")
@@ -72,18 +101,13 @@ class SSDPUDPSocket {
         print("Server closed")
     }
     
-    func send(messageData: Data, toHost: String, port: UInt16, withTimeout: TimeInterval, tag: UInt) {
-        
-        guard let channel else {
-            os_log(.error, log: .default, "Channel not available")
-            return
-        }
-        
+    func send(messageData: Data, toHost: String, port: UInt16, withTimeout: TimeInterval, tag: UInt) throws {
+        guard let channel else {return}
         do {
             let byteBuffer = ByteBuffer(bytes: messageData)
             let outbound: AddressedEnvelope<ByteBuffer> = AddressedEnvelope(remoteAddress: try SocketAddress(ipAddress: toHost, port: Int(port)), data: byteBuffer)
             
-            _ = channel.write(outbound)
+            _ = channel.writeAndFlush(outbound)
         }catch {
             os_log(.error, log: .default, "Could not send datagram over UDP")
         }
@@ -105,6 +129,7 @@ extension SSDPUDPSocket {
         
         var currentReadData: Data?
         var inboundPacket: InboundIn?
+        var channelContext: ChannelHandlerContext?
         
         init(completionQueue: DispatchQueue, readDataHandler:@escaping (Data, InboundIn)->(), caughtErrorHandler: @escaping (Error)->()) {
             self.readDataHandler = readDataHandler
@@ -112,34 +137,26 @@ extension SSDPUDPSocket {
             self.completionQueue = completionQueue
         }
         
+        public func channelActive(context: ChannelHandlerContext) {
+            os_log(.debug, "Socket channel is active")
+        }
+        
         public func channelRead(context: ChannelHandlerContext, data: NIOAny) {
             
             //Read the received data
             var inboundData = unwrapInboundIn(data)
-            self.inboundPacket = inboundData
-            if currentReadData == nil {
-                currentReadData = Data()
-            }
-            
+
             // We convert the received bytes to data and store them in the `currentReadData`
             if let receivedBytArray = inboundData.data.readBytes(length: inboundData.data.readableBytes) {
-                currentReadData?.append(Data(receivedBytArray))
+                // Notify the listener
+                completionQueue.async {
+                    self.readDataHandler(Data(receivedBytArray), inboundData)
+                }
             }
             
         }
         
         public func channelReadComplete(context: ChannelHandlerContext) {
-            // Finished reading on the channel
-            
-            // Notify the listeners
-            if let data = currentReadData, let inboundPacket = inboundPacket {
-                completionQueue.async {
-                    self.readDataHandler(data, inboundPacket)
-                }
-            }
-            //Clear the data
-            currentReadData = nil
-            // Flush the context
             context.flush()
         }
         

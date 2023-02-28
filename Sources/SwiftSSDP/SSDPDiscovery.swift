@@ -234,10 +234,19 @@ extension SSDPDiscovery {
     ///
     /// - Parameters:
     ///     - request: The M-SEARCH request representing the devices to discover
-    internal func sendRequestMessage(request: SSDPMSearchRequest) {
+    internal func sendRequestMessage(request: SSDPMSearchRequest, retry:Bool=false) {
         if let socket = self.asyncUdpSocket {
             let messageData = request.message.data(using: .utf8)!
-            socket.send(messageData: messageData, toHost: SSDPDiscovery.ssdpHost, port: UInt16(SSDPDiscovery.ssdpPort), withTimeout: -1, tag: 1000)
+            do {
+                try socket.send(messageData: messageData, toHost: SSDPDiscovery.ssdpHost, port: UInt16(SSDPDiscovery.ssdpPort), withTimeout: -1, tag: 1000)
+            }catch {
+                os_log(.error, "Failed sending SSDP request message %@", error.localizedDescription)
+                guard !retry else {return}
+                //Failed. Retry later
+                DispatchQueue.main.asyncAfter(deadline: .now()+1, execute: {
+                    self.sendRequestMessage(request: request, retry: true)
+                })
+            }
 //            socket.send(messageData, toHost: SSDPDiscovery.ssdpHost, port: UInt16(SSDPDiscovery.ssdpPort), withTimeout: -1, tag: 1000)
         }
     }
