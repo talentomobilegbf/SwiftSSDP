@@ -44,6 +44,15 @@ final class UDPTest: XCTestCase {
         wait(for: [expect], timeout: 10.0)
         try socket.close()
     }
+    
+    func testClose() throws {
+        let socket = try SSDPUDPSocket { data, adressInfo in
+        } caughtErrorHandler: { error in
+        }
+        print("Opened socket")
+        try socket.close()
+        print("Closed socket")
+    }
 
     func testPerformanceExample() throws {
         // This is an example of a performance test case.

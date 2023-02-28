@@ -92,8 +92,9 @@ class SSDPUDPSocket {
     
     /// Close the UDP socket
     func close() throws {
+        let closeFuture = channel?.close()
+        try closeFuture?.wait()
         try group?.syncShutdownGracefully()
-        try channel?.closeFuture.wait()
         self.isClosed = true
         
         print("Server closed")
