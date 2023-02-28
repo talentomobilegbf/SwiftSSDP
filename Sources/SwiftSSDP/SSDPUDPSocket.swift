@@ -39,14 +39,6 @@ class SSDPUDPSocket {
         let messageHandler = MessageHandler(completionQueue:completionQueue, readDataHandler: readDataHandler, caughtErrorHandler: caughtErrorHandler)
         self.messageHandler = messageHandler
         
-        // Add the multicast group to the channel's membership
-        let ssdpMulticastGroup = try SocketAddress(ipAddress: "239.255.255.250", port: 1900)
-        
-        let networkInterface = try System.enumerateDevices().filter({
-            $0.multicastSupported && $0.broadcastAddress != nil
-        }).sorted(by: {$0.interfaceIndex < $1.interfaceIndex}).first
-       
-        
         let bootstrap = DatagramBootstrap(group: group)
         // Specify backlog and enable SO_REUSEADDR
             .channelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
@@ -61,33 +53,10 @@ class SSDPUDPSocket {
     
         let channel = try { () -> Channel in
             try bootstrap.bind(host: ip, port: port)
-//                .flatMap { channel -> EventLoopFuture<Channel> in
-//                    let channel = channel as! MulticastChannel
-//                    return channel.joinGroup(ssdpMulticastGroup).map { channel }
-//                }
-//                .flatMap { channel -> EventLoopFuture<Channel> in
-//                    guard let interface = networkInterface else {
-//                        return channel.eventLoop.makeSucceededFuture(channel)
-//                    }
-//                    let provider = channel as! SocketOptionProvider
-//                    switch interface.address {
-//                    case .some(.v4(let addr)):
-//                        return provider.setIPMulticastIF(addr.address.sin_addr).map { channel }
-//                    case .some(.v6):
-//                        return provider.setIPv6MulticastIF(CUnsignedInt(interface.interfaceIndex)).map { channel }
-//                    case .some(.unixDomainSocket):
-//                        assertionFailure("Should not be possible to create a multicast socket on a unix domain socket")
-//                        return channel.eventLoop.makeSucceededFuture(channel)
-//                    case .none:
-//                        assertionFailure("Should not be possible to create a multicast socket on an interface without an address")
-//                        return channel.eventLoop.makeSucceededFuture(channel)
-//                    }
-//                }
                 .wait()
         }()
         
         self.channel = channel
-        print("Socket started and listening on \(channel.localAddress!)")
     }
     
     /// Close the UDP socket
@@ -96,8 +65,6 @@ class SSDPUDPSocket {
         try closeFuture?.wait()
         try group?.syncShutdownGracefully()
         self.isClosed = true
-        
-        print("Server closed")
     }
     
     func send(messageData: Data, toHost: String, port: UInt16, withTimeout: TimeInterval, tag: UInt) throws {
@@ -109,7 +76,12 @@ class SSDPUDPSocket {
             _ = channel.writeAndFlush(outbound)
         }catch {
             os_log(.error, log: .default, "Could not send datagram over UDP")
+            throw SocketError.sendFailed
         }
+    }
+    
+    enum SocketError: Error {
+        case sendFailed
     }
 }
 
@@ -134,10 +106,6 @@ extension SSDPUDPSocket {
             self.readDataHandler = readDataHandler
             self.caughtErrorHandler = caughtErrorHandler
             self.completionQueue = completionQueue
-        }
-        
-        public func channelActive(context: ChannelHandlerContext) {
-            os_log(.debug, "Socket channel is active")
         }
         
         public func channelRead(context: ChannelHandlerContext, data: NIOAny) {
