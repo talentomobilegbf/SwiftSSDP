@@ -182,7 +182,7 @@ public class SSDPDiscovery: NSObject {
             self.asyncUdpSocket = socket
             self.ssdpResponseQueue = ssdpQueue!
         }catch {
-            os_log(.error, log: .default, "Unable to create UDP Socket")
+            os_log(.error, log: .default, "Unable to create UDP Socket %@", error.localizedDescription)
         }
     }
     

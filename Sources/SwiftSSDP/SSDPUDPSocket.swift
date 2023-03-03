@@ -8,7 +8,7 @@ import Foundation
 class SSDPUDPSocket {
     
     static let defaultHost = "0.0.0.0"
-    static let defaultPort = 64279
+    static let defaultPort: Int = Int(49152 + (arc4random() % (65535-49152))) // Ports from 49152 to 65535 are free to use
     
     enum BindTo {
         case ip(host: String, port: Int)
