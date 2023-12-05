@@ -198,12 +198,8 @@ public class SSDPDiscoverySession: Equatable {
 
 extension SSDPDiscoverySession: SSDPDiscoveryDelegate {
     public func discoveredDevice(response: SSDPMSearchResponse, session: SSDPDiscoverySession) {
-        // TODO: Add a write lock here to synchronize `internalResponses`
-        if !internalResponses.contains(response) {
-            internalResponses.insert(response)
-            
-            self.request.delegate.discoveredDevice(response: response, session: session)
-        }
+        internalResponses.insert(response)
+        self.request.delegate.discoveredDevice(response: response, session: session)
     }
     
     public func discoveredService(response: SSDPMSearchResponse, session: SSDPDiscoverySession) {
